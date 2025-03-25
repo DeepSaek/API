@@ -1,36 +1,83 @@
-# This is a basic workflow to help you get started with Actions
-
-name: CI
-
-# Controls when the workflow will run
-on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+name: Build and Release API
+on: 
   workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+  schedule:
+    - cron: 0 20 * * *
+env:
+  TZ: Asia/Shanghai
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+    - name: 检查服务器配置
+      run: |
+        echo "警告⚠"
+        echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
+        echo -e "已知CPU型号(降序): 7763，8370C，8272CL，8171M，E5-2673\n"
+        echo "--------------------------CPU信息--------------------------"
+        echo "CPU物理数量: $(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo "CPU核心数量: $(nproc)"
+        echo -e "CPU型号信息:$(cat /proc/cpuinfo | grep -m1 name | awk -F: '{print $2}')\n"
+        echo "--------------------------内存信息--------------------------"
+        echo "已安装内存详细信息:"
+        echo -e "$(sudo lshw -short -C memory | grep GiB)\n"
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+        
+    - name: 查看IP
+      run: |
+        curl -4 ipinfo.io
+        
+    - name: 最大化磁盘空间
+      uses: easimon/maximize-build-space@master
+      with:
+        overprovision-lvm: 'true'
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+    - name: 检查硬盘信息
+      run: |
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+    - name: 迁出代码
+      uses: actions/checkout@v3
+
+    - name: 开始编译
+      run: |
+        sudo apt-get update
+        sudo apt-get install make git zlib1g-dev libssl-dev gperf cmake clang-18 libc++-18-dev libc++abi-18-dev
+        git clone --recursive https://github.com/tdlib/telegram-bot-api.git
+        cd telegram-bot-api
+        rm -rf build
+        mkdir build
+        cd build
+        CXXFLAGS="-stdlib=libc++" CC=/usr/bin/clang-18 CXX=/usr/bin/clang++-18 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=.. ..
+        cmake --build . --target install
+        cd ../..
+        ls -l telegram-bot-api/bin/telegram-bot-api*
+        
+    - name : 上传固件
+      uses: actions/upload-artifact@v4
+      with:
+        name: API
+        path: telegram-bot-api/bin
+
+    - name: 生成发布标签
+      id: tag
+      run: |
+        echo "release_tag=v$(date +"%Y.%m.%d")" >> $GITHUB_OUTPUT
+        touch release.txt
+        echo "
+        💻 架构: x86_64 " >> release.txt
+
+    - name: 自动发布固件到 Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: |
+          telegram-bot-api/bin/telegram-bot-api*
