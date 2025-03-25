@@ -47,7 +47,7 @@ jobs:
         mkdir build
         cd build
         CXXFLAGS="-stdlib=libc++" CC=/usr/bin/clang-18 CXX=/usr/bin/clang++-18 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=.. ..
-        cmake --build . --target install
+        cmake --build . --target install -- -j$(nproc)
         cd ../..
         ls -l telegram-bot-api/bin/telegram-bot-api*
         
