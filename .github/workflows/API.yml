@@ -29,15 +29,6 @@ jobs:
       run: |
         curl -4 ipinfo.io
         
-    - name: 最大化磁盘空间
-      uses: easimon/maximize-build-space@master
-      with:
-        overprovision-lvm: 'true'
-        remove-dotnet: 'true'
-        remove-android: 'true'
-        remove-haskell: 'true'
-        remove-codeql: 'true'
-
     - name: 检查硬盘信息
       run: |
         echo "--------------------------硬盘信息--------------------------"
